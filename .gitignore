@@ -1,0 +1,25 @@
+# Ignore Visual Studio files
+.vs/
+*.user
+*.suo
+*.sln.docstates
+
+# Ignore build output
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+
+# Ignore temporary files
+*.log
+*.cache
+*.tmp
+
+# Ignore packages
+packages/
+*.nupkg
+
+# Ignore other system files
+Thumbs.db
+.DS_Store
