@@ -8,6 +8,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Text.Json.Serialization;
+using PowerPointAddIn1.Helpers;
+
 
 
 
@@ -15,6 +17,9 @@ namespace PowerPointAddIn1.Forms
 {
     public partial class SessionControlForm : Form
     {
+        // Add this field to track class ID changes
+        private long _originalClassId;
+        private Button _btnLiveLeaderboard;
         // UI Controls to add
         private ComboBox cmbQuestions;
         private Button btnStopQuestion;
@@ -31,9 +36,11 @@ namespace PowerPointAddIn1.Forms
         private HttpClient _client;
         private Timer _questionTimer;
         private int _timeRemaining;
+        private Question _currentActiveQuestion; // 🚨 TRACK CURRENT ACTIVE QUESTION
+
 
         private List<Question> _availableQuestions = new List<Question>();
-
+        private string _ngrokBaseUrl;
 
         public class Question
         {
@@ -71,6 +78,9 @@ namespace PowerPointAddIn1.Forms
             this.teacherId = teacherId;
             _courseId = courseId; // 🚨 STORE COURSE ID
 
+            _originalClassId = classId; // 🚨 STORE ORIGINAL
+
+
             // Initialize HTTP client
             _client = new HttpClient();
             _client.Timeout = TimeSpan.FromSeconds(10);
@@ -87,11 +97,25 @@ namespace PowerPointAddIn1.Forms
             lblStudents.Text = "Students: 0";
             DisplayQrCode(qrCodeUrl);  // 🚨 ADD THIS!
 
+            AddLog($" Session created - ClassId: {_classId}, CourseId: {_courseId}, TeacherId: {teacherId}");
+            // 🚨 Call async initializer
+            _ = InitializeAsync();
 
-            AddLog("Form initialized successfully");
+        }
 
-            // 🚨 ADD THIS LINE - Start background updates
-           // StartBackgroundUpdates();
+        private async Task InitializeAsync()
+        {
+            _ngrokBaseUrl = await NgrokHelper.GetNgrokBaseUrlAsync();
+            if (string.IsNullOrEmpty(_ngrokBaseUrl))
+            {
+                AddLog("❌ Failed to retrieve ngrok URL.");
+            }
+            else
+            {
+                AddLog($"✅ ngrok URL loaded: {_ngrokBaseUrl}");
+            }
+
+            // Optionally: preload questions, check health, etc.
         }
 
         private void CreateUI()
@@ -103,6 +127,9 @@ namespace PowerPointAddIn1.Forms
             this.StartPosition = FormStartPosition.CenterScreen;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
+
+
+            int buttonY = 230;
 
 
             // Class Code Label
@@ -130,7 +157,7 @@ namespace PowerPointAddIn1.Forms
 
             // Start Session Button
             btnStartSession = new Button();
-            btnStartSession.Location = new Point(20, 110);
+            btnStartSession.Location = new Point(20,buttonY);
             btnStartSession.Size = new Size(120, 35);
             btnStartSession.Text = "Start Session";
             btnStartSession.BackColor = Color.LightGreen;
@@ -139,7 +166,7 @@ namespace PowerPointAddIn1.Forms
 
             // Activate Question Button
             btnActivateQuestion = new Button();
-            btnActivateQuestion.Location = new Point(150, 110);
+            btnActivateQuestion.Location = new Point(150, buttonY);
             btnActivateQuestion.Size = new Size(120, 35);
             btnActivateQuestion.Text = "Activate Question";
             btnActivateQuestion.BackColor = Color.LightBlue;
@@ -149,25 +176,23 @@ namespace PowerPointAddIn1.Forms
 
             // Refresh Leaderboard Button
             btnRefreshLeaderboard = new Button();
-            btnRefreshLeaderboard.Location = new Point(280, 110);
+            btnRefreshLeaderboard.Location = new Point(280, buttonY);
             btnRefreshLeaderboard.Size = new Size(120, 35);
             btnRefreshLeaderboard.Text = "Refresh";
             btnRefreshLeaderboard.BackColor = Color.LightYellow;
             btnRefreshLeaderboard.Click += BtnRefreshLeaderboard_Click;
             this.Controls.Add(btnRefreshLeaderboard);
 
-            // Add after your existing controls (around line 110-120)
-
             // Question Selection Label
             var lblSelectQuestion = new Label();
             lblSelectQuestion.Text = "Select Question:";
-            lblSelectQuestion.Location = new Point(20, 170);
+            lblSelectQuestion.Location = new Point(20, 270);
             lblSelectQuestion.Size = new Size(100, 20);
             this.Controls.Add(lblSelectQuestion);
 
             // Question ComboBox
             cmbQuestions = new ComboBox();
-            cmbQuestions.Location = new Point(120, 170);
+            cmbQuestions.Location = new Point(120, 270);
             cmbQuestions.Size = new Size(300, 25);
             cmbQuestions.DropDownStyle = ComboBoxStyle.DropDownList;
             this.Controls.Add(cmbQuestions);
@@ -175,14 +200,14 @@ namespace PowerPointAddIn1.Forms
             // Refresh Questions Button
             btnRefreshQuestions = new Button();
             btnRefreshQuestions.Text = "Refresh";
-            btnRefreshQuestions.Location = new Point(430, 170);
+            btnRefreshQuestions.Location = new Point(430, 270);
             btnRefreshQuestions.Size = new Size(80, 25);
             btnRefreshQuestions.Click += BtnRefreshQuestions_Click;
             this.Controls.Add(btnRefreshQuestions);
 
             // Question Status
             lblQuestionStatus = new Label();
-            lblQuestionStatus.Location = new Point(20, 200);
+            lblQuestionStatus.Location = new Point(20, 300);
             lblQuestionStatus.Size = new Size(300, 20);
             lblQuestionStatus.Text = "No active question";
             lblQuestionStatus.ForeColor = Color.Blue;
@@ -190,7 +215,7 @@ namespace PowerPointAddIn1.Forms
 
             // Timer Display
             lblTimer = new Label();
-            lblTimer.Location = new Point(20, 225);
+            lblTimer.Location = new Point(20, 325);
             lblTimer.Size = new Size(100, 25);
             lblTimer.Text = "Time: --";
             lblTimer.Font = new Font(lblTimer.Font, FontStyle.Bold);
@@ -200,7 +225,7 @@ namespace PowerPointAddIn1.Forms
             // Stop Question Button
             btnStopQuestion = new Button();
             btnStopQuestion.Text = "Stop Question";
-            btnStopQuestion.Location = new Point(150, 220);
+            btnStopQuestion.Location = new Point(150, 320);
             btnStopQuestion.Size = new Size(120, 35);
             btnStopQuestion.BackColor = Color.LightCoral;
             btnStopQuestion.Enabled = false;
@@ -210,7 +235,7 @@ namespace PowerPointAddIn1.Forms
             // Show Results Button
             btnShowResults = new Button();
             btnShowResults.Text = "Show Results";
-            btnShowResults.Location = new Point(280, 220);
+            btnShowResults.Location = new Point(280, 320);
             btnShowResults.Size = new Size(120, 35);
             btnShowResults.BackColor = Color.LightBlue;
             btnShowResults.Click += BtnShowResults_Click;
@@ -219,15 +244,24 @@ namespace PowerPointAddIn1.Forms
 
             // Log ListBox
             listBoxLog = new ListBox();
-            listBoxLog.Location = new Point(20, 280);
-            listBoxLog.Size = new Size(550, 150);
+            listBoxLog.Location = new Point(20, 380);
+            listBoxLog.Size = new Size(550, 80);
             listBoxLog.Font = new Font("Consolas", 9);
             this.Controls.Add(listBoxLog);
 
-            // Add initial log entry
-            AddLog("Session Control Form Started");
-            AddLog($"Class: {_classCode}");
-            AddLog("Ready to begin quiz session");
+            // Add this button near your other buttons (around line 110)
+            _btnLiveLeaderboard = new Button();
+            _btnLiveLeaderboard.Location = new Point(410, buttonY);
+            _btnLiveLeaderboard.Size = new Size(120, 35);
+            _btnLiveLeaderboard.Text = "Live Leaderboard";
+            _btnLiveLeaderboard.BackColor = Color.LightGoldenrodYellow;
+            _btnLiveLeaderboard.Click += BtnLiveLeaderboard_Click;
+            this.Controls.Add(_btnLiveLeaderboard);
+        }
+        private void BtnLiveLeaderboard_Click(object sender, EventArgs e)
+        {
+            var leaderboardForm = new LiveLeaderboardForm((int)_classId);
+            leaderboardForm.Show();
         }
 
 
@@ -250,20 +284,20 @@ namespace PowerPointAddIn1.Forms
         {
             try
             {
-                AddLog("Starting session...");
+                //AddLog("Starting session...");
                 btnStartSession.Enabled = false;
                 lblStatus.Text = "Status: Starting session...";
 
 
-                var response = await _client.PostAsync($"http://localhost:5000/api/sessions/{_classId}/start", null);
-
+                //var response = await _client.PostAsync($"http://localhost:5000/api/sessions/{_classId}/start", null);
+                //var response = await _client.PostAsync($"http://192.168.0.102:5000/api/sessions/{_classId}/start", null);
+                var response = await _client.PostAsync($"{_ngrokBaseUrl}/api/sessions/{_classId}/start", null);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    AddLog("Session started successfully!");
+                    //AddLog("Session started successfully!");
                     lblStatus.Text = "Status: Session Active!";
                     btnActivateQuestion.Enabled = true;
-                    MessageBox.Show("Session started! Students can now join.", "Success");
 
                     // 🆕 ADD THIS ONE LINE ONLY - Load questions when session starts
                     if (btnRefreshQuestions != null) LoadAvailableQuestions();
@@ -287,136 +321,126 @@ namespace PowerPointAddIn1.Forms
                 MessageBox.Show($"Error: {ex.Message}", "Error");
             }
         }
-        /*
-                private async void BtnActivateQuestion_Click(object sender, EventArgs e)
-                {
-                    try
-                    {
-                        AddLog("Activating question...");
-                        lblStatus.Text = "Status: Activating question...";
 
-                        var response = await _client.PostAsync($"http://localhost:5000/api/sessions/{_classId}/activate/0", null);
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            AddLog("Question activated successfully!");
-                            lblStatus.Text = "Status: Question Active!";
-                            MessageBox.Show("Question activated! Students can now answer.", "Success");
-                        }
-                        else
-                        {
-                            var errorContent = await response.Content.ReadAsStringAsync();
-                            AddLog($"Failed to activate question: {errorContent}");
-                            lblStatus.Text = "Status: Failed to activate";
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        AddLog($"Error activating question: {ex.Message}");
-                        lblStatus.Text = "Status: Error";
-                        MessageBox.Show($"Error: {ex.Message}", "Error");
-                    }
-                }
-        */
         private async void BtnActivateQuestion_Click(object sender, EventArgs e)
         {
             try
             {
-                // Check if we have questions loaded for real-time activation
                 if (cmbQuestions != null && cmbQuestions.SelectedIndex != -1 && _availableQuestions.Count > 0)
                 {
-                    // 🆕 NEW: Real-time question activation with selection
                     var selectedQuestion = _availableQuestions[cmbQuestions.SelectedIndex];
 
-                   // AddLog($"Activating question: {selectedQuestion.DisplayContent}");
-                    AddLog($"Activating question: {selectedQuestion.DisplayContent}");
-
-                    lblStatus.Text = "Status: Activating question...";
+                    //AddLog($"Attempting to activate question ID: {selectedQuestion.Id}");
 
                     var activationData = new { question_id = selectedQuestion.Id };
                     var json = JsonSerializer.Serialize(activationData);
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                    var response = await _client.PostAsync(
-                        $"http://localhost:5000/api/sessions/{_classId}/activate-question",
-                        content);
-
-                    if (response.IsSuccessStatusCode)
+                    // 🚨 ADD AUTHORIZATION HEADER TO THE REQUEST
+                    //string url = $"http://192.168.0.102:5000/api/sessions/{_classId}/activate-question";
+                    string url = $"{_ngrokBaseUrl}/api/sessions/{_classId}/activate-question";
+                    // Create a new HttpClient for this request to ensure clean headers
+                    using (var activationClient = new HttpClient())
                     {
-                        // 🆕 NEW: Start timer and update UI
-                        _timeRemaining = selectedQuestion.TimeLimit;
-                        StartQuestionTimer();
+                        activationClient.Timeout = TimeSpan.FromSeconds(10);
+                        //activationClient.DefaultRequestHeaders.Add("Authorization", "Bearer dev-teacher-key");
+                        // 🚨 USE X-Teacher-API-Key INSTEAD OF Authorization
+                        activationClient.DefaultRequestHeaders.Add("X-Teacher-API-Key", "dev-teacher-key");
 
-                        btnActivateQuestion.Enabled = false;
-                        if (btnStopQuestion != null) btnStopQuestion.Enabled = true;
-                        if (lblQuestionStatus != null)
+                      
+
+                        var response = await activationClient.PostAsync(url, content);
+
+                        //AddLog($"Response Status: {(int)response.StatusCode} {response.StatusCode}");
+
+                        var responseContent = await response.Content.ReadAsStringAsync();
+                        //AddLog($"Response Content: {responseContent}");
+
+                        if (response.IsSuccessStatusCode)
                         {
-                            lblQuestionStatus.Text = $"ACTIVE: {selectedQuestion.Content}";
-                            lblQuestionStatus.ForeColor = Color.Green;
+                            // 🚨 STORE CURRENTLY ACTIVE QUESTION
+                            _currentActiveQuestion = selectedQuestion;
+                            _timeRemaining = selectedQuestion.TimeLimit;
+                            StartQuestionTimer();
+
+                            // 🚨 UPDATE UI FOR ACTIVE QUESTION
+                            btnActivateQuestion.Enabled = false;
+                            if (btnStopQuestion != null) btnStopQuestion.Enabled = true;
+                            if (lblQuestionStatus != null)
+                            {
+                                lblQuestionStatus.Text = $"ACTIVE: {selectedQuestion.DisplayContent}";
+                                lblQuestionStatus.ForeColor = Color.Green;
+                            }
+                            // 🚨 MARK THE ACTIVE QUESTION IN THE DROPDOWN
+                            cmbQuestions.Enabled = false; // Disable dropdown while question is active
+
+                            AddLog($"✅ Question '{selectedQuestion.DisplayContent}' activated successfully!");
+                            AddLog($"Students have {_timeRemaining} seconds to answer");
+                            lblStatus.Text = "Status: Question Active!";
                         }
-
-                        AddLog($"Question activated: {selectedQuestion.Content}");
-                        AddLog($"Students have {_timeRemaining} seconds to answer");
-                        lblStatus.Text = "Status: Question Active!";
-                        //MessageBox.Show("Question activated! Students can now answer.", "Success");
-                    }
-                    else
-                    {
-                        var errorContent = await response.Content.ReadAsStringAsync();
-                        AddLog($"Failed to activate question: {errorContent}");
-                        lblStatus.Text = "Status: Failed to activate";
-
-                        // 🆕 FALLBACK: Try old method if new one fails
-                        await FallbackActivateQuestion();
+                        else
+                        {
+                            AddLog($"❌ Activation failed: {responseContent}");
+                        }
                     }
                 }
                 else
                 {
-                    // 🎯 OLD METHOD: Fallback to original behavior
                     await FallbackActivateQuestion();
                 }
             }
             catch (Exception ex)
             {
-                AddLog($"Error activating question: {ex.Message}");
-                lblStatus.Text = "Status: Error";
-                MessageBox.Show($"Error: {ex.Message}", "Error");
+                AddLog($"❌ Exception in activation: {ex.Message}");
             }
         }
-
-        // 🆕 ADD THIS HELPER METHOD FOR BACKWARD COMPATIBILITY
+        
         private async Task FallbackActivateQuestion()
         {
-            AddLog("Using fallback question activation...");
-            lblStatus.Text = "Status: Activating question...";
+            //AddLog("Using fallback question activation...");
 
-            var response = await _client.PostAsync($"http://localhost:5000/api/sessions/{_classId}/activate/0", null);
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                AddLog("Question activated successfully!");
-                lblStatus.Text = "Status: Question Active!";
-                MessageBox.Show("Question activated! Students can now answer.", "Success");
+                using (var fallbackClient = new HttpClient())
+                {
+                    fallbackClient.Timeout = TimeSpan.FromSeconds(10);
+                    //fallbackClient.DefaultRequestHeaders.Add("Authorization", "Bearer dev-teacher-key");
+                    fallbackClient.DefaultRequestHeaders.Add("X-Teacher-API-Key", "dev-teacher-key"); // 🚨 FIX HEADER
+
+                    var response = await fallbackClient.PostAsync(
+                        $"{_ngrokBaseUrl} /api/sessions/{_classId}/activate/0",
+                        null);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        //AddLog("Fallback activation successful!");
+                        lblStatus.Text = "Status: Question Active!";
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        AddLog($"Fallback activation failed: {errorContent}");
+                    }
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                AddLog($"Failed to activate question: {errorContent}");
-                lblStatus.Text = "Status: Failed to activate";
+                AddLog($"Fallback activation error: {ex.Message}");
             }
         }
         private async void BtnRefreshLeaderboard_Click(object sender, EventArgs e)
         {
             try
             {
-                AddLog("Refreshing leaderboard...");
+                //AddLog("Refreshing leaderboard...");
 
-                var response = await _client.GetAsync($"http://localhost:5000/api/sessions/{_classId}/leaderboard");
+                //var response = await _client.GetAsync($"http://localhost:5000/api/sessions/{_classId}/leaderboard");
+                var response = await _client.GetAsync($"{_ngrokBaseUrl} /api/sessions/{_classId}/leaderboard");
 
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    AddLog("Leaderboard refreshed successfully");
+                    //AddLog("Leaderboard refreshed successfully");
 
                     // Parse and display leaderboard
                     var result = JsonSerializer.Deserialize<JsonElement>(content);
@@ -487,11 +511,15 @@ namespace PowerPointAddIn1.Forms
             }
         }
 
+        private int _previousStudentCount = 0; // Add this class-level variable
+
         private async Task UpdateStudentCount()
         {
             try
             {
-                var response = await _client.GetAsync($"http://localhost:5000/api/sessions/{_classId}/leaderboard");
+                //var response = await _client.GetAsync($"http://localhost:5000/api/sessions/{_classId}/leaderboard");
+                var response = await _client.GetAsync($"{_ngrokBaseUrl} /api/sessions/{_classId}/participants/count");
+                
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
@@ -515,9 +543,11 @@ namespace PowerPointAddIn1.Forms
                             lblStudents.Text = $"Students: {studentCount}";
                         }
 
-                        if (studentCount > 0)
+                        // 🚨 ONLY LOG WHEN STUDENT COUNT CHANGES
+                        if (studentCount > 0 && studentCount != _previousStudentCount)
                         {
                             AddLog($"{studentCount} student(s) joined");
+                            _previousStudentCount = studentCount; // Update the previous count
                         }
                     }
                 }
@@ -553,7 +583,7 @@ namespace PowerPointAddIn1.Forms
                 // Load image asynchronously from URL
                 LoadQrImageAsync(picBox, qrUrl);
 
-                AddLog("QR code loading from URL...");
+                //AddLog("QR code loading from URL...");
             }
             catch (Exception ex)
             {
@@ -572,8 +602,9 @@ namespace PowerPointAddIn1.Forms
                 using (var client = new HttpClient())
                 {
                     // QR URL is relative, so add the base URL
-                    var fullUrl = $"http://localhost:5000{qrUrl}";
-                    //AddLog($"Full URL: {fullUrl}");
+                    //var fullUrl = $"http://192.168.0.102:5000{qrUrl}";
+                    string baseUrl = await NgrokHelper.GetNgrokBaseUrlAsync();
+                    var fullUrl = $"{baseUrl}{qrUrl}";
 
                     //AddLog("Sending HTTP request...");
                     var imageBytes = await client.GetByteArrayAsync(fullUrl);
@@ -630,75 +661,88 @@ namespace PowerPointAddIn1.Forms
         {
             try
             {
-                AddLog($"Loading questions for course {_courseId}..."); // 🚨 USE ACTUAL COURSE ID
-                                                                        //var response = await _client.GetAsync($"http://localhost:5000/api/teacher/{teacherId}/questions");
+                // 🚨 TEST BACKEND CONNECTION FIRST
+                try
+                {
+                    //var healthResponse = await _client.GetAsync("http://192.168.0.102:5000/health");
+                    string baseUrl = await NgrokHelper.GetNgrokBaseUrlAsync();
+                    var healthResponse = await _client.GetAsync($"{baseUrl}/health");
+                
+
+             }
+            catch (Exception healthEx)
+                {
+                    AddLog($"❌ Backend connection failed: {healthEx.Message}");
+                }
+                //string url = $"http://localhost:5000/api/courses/{_courseId}/questions";
+                string url = $"{_ngrokBaseUrl}/api/courses/{_courseId}/questions";
 
 
-                // Use the course ID from constructor
-                var response = await _client.GetAsync($"http://localhost:5000/api/courses/{_courseId}/questions");
+                var response = await _client.GetAsync(url);
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+
+                cmbQuestions.Items.Clear();
+
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var content = await response.Content.ReadAsStringAsync();
-                    AddLog($"Raw API response: {content}"); // 🚨 DEBUG
-
-                    _availableQuestions = JsonSerializer.Deserialize<List<Question>>(content);
-
-                    cmbQuestions.Items.Clear();
-
-                    if (_availableQuestions != null && _availableQuestions.Count > 0)
+                    try
                     {
-                        foreach (var question in _availableQuestions)
+                        _availableQuestions = JsonSerializer.Deserialize<List<Question>>(responseContent);
+                        //AddLog($"Deserialized questions count: {_availableQuestions?.Count ?? 0}");
+
+                        if (_availableQuestions != null && _availableQuestions.Count > 0)
                         {
-                            string displayText = question.Content.Length > 30
-                             ? question.Content.Substring(0, 30) + "..."
-                             : question.Content;
-                            //cmbQuestions.Items.Add($"{question.Content} ({question.Points} pts)");
-                            cmbQuestions.Items.Add($"{question.DisplayContent} ({question.Points} pts)");
+                            foreach (var question in _availableQuestions)
+                            {
+                                string displayText = question.DisplayContent.Length > 50
+                                    ? question.DisplayContent.Substring(0, 50) + "..."
+                                    : question.DisplayContent;
+                                cmbQuestions.Items.Add($"{displayText} ({question.Points} pts)");
 
+                                //AddLog($"  - Loaded: ID={question.Id}, Content='{question.DisplayContent}'");
+
+                            }
+                            cmbQuestions.SelectedIndex = 0;
+                            //AddLog($"✅ SUCCESS: Loaded {_availableQuestions.Count} questions");
                         }
-                        cmbQuestions.SelectedIndex = 0;
-                        AddLog($"✅ Loaded {_availableQuestions.Count} questions from course {_courseId}");
+                        else
+                        {
+                            //AddLog($"❌ No questions found in course {_courseId}");
+                            cmbQuestions.Items.Add("No questions available - create questions first");
+                        }
                     }
-                    else
+                    catch (JsonException jsonEx)
                     {
-                        AddLog($"❌ No questions found in course {_courseId}");
-                        // Remove dummy questions - use real data only
-                        cmbQuestions.Items.Add("No questions available - create questions first");
+                        AddLog($"❌ JSON Deserialization Error: {jsonEx.Message}");
+                        cmbQuestions.Items.Add("Error: Invalid response format");
                     }
                 }
                 else
                 {
-                    AddLog($"❌ Failed to load questions: {response.StatusCode}");
-                    AddDummyQuestions();
+                    AddLog($"❌ API Error: {response.StatusCode}");
+                    if (responseContent.Contains("<!DOCTYPE html>") || responseContent.Contains("<html"))
+                    {
+                        AddLog("❌ Got HTML error page instead of JSON");
+                        cmbQuestions.Items.Add("Error: Backend returned HTML error");
+                    }
+                    else
+                    {
+                        cmbQuestions.Items.Add($"Error: API returned {response.StatusCode}");
+                    }
                 }
+
+                //AddLog($"=== QUESTION LOADING DEBUG END ===");
             }
             catch (Exception ex)
             {
-                AddLog($"Error loading questions: {ex.Message}");
-                AddDummyQuestions();
+                AddLog($"❌ Exception loading questions: {ex.Message}");
+                AddLog($"❌ Stack trace: {ex.StackTrace}");
+                cmbQuestions.Items.Add("Error: Failed to load questions");
             }
-        }
-        // 🚨 TEMPORARY: Add dummy questions so you can test the activation
-        private void AddDummyQuestions()
-        {
-            _availableQuestions = new List<Question>
-    {
-        new Question { Id = 1, Content = "What is 2+2?", Points = 100, TimeLimit = 30 },
-        new Question { Id = 2, Content = "Capital of France?", Points = 100, TimeLimit = 30 },
-        new Question { Id = 3, Content = "Largest planet?", Points = 100, TimeLimit = 30 }
-    };
-
-            cmbQuestions.Items.Clear();
-            foreach (var question in _availableQuestions)
-            {
-                cmbQuestions.Items.Add($"{question.Content} ({question.Points} pts)");
-            }
-
-            if (cmbQuestions.Items.Count > 0)
-                cmbQuestions.SelectedIndex = 0;
-
-            AddLog("✅ Loaded dummy questions for testing");
+                
         }
 
         private async void BtnRefreshQuestions_Click(object sender, EventArgs e)
@@ -773,8 +817,9 @@ namespace PowerPointAddIn1.Forms
 
         private async void AutoStopQuestion()
         {
+            AddLog("⏰ Time's up! Auto-stopping question...");
             await StopCurrentQuestion();
-            AddLog("Time's up! Question automatically stopped.");
+           // AddLog("✅ Auto-stop completed");
         }
 
         private async Task StopCurrentQuestion()
@@ -783,25 +828,115 @@ namespace PowerPointAddIn1.Forms
             {
                 StopQuestionTimer();
 
-                var response = await _client.PostAsync(
-                    $"http://localhost:5000/api/sessions/{_classId}/stop-question",
-                    new StringContent("{}", Encoding.UTF8, "application/json"));
-
-                if (response.IsSuccessStatusCode)
+                using (var stopClient = new HttpClient())
                 {
-                    btnActivateQuestion.Enabled = true;
-                    btnStopQuestion.Enabled = false;
-                    lblQuestionStatus.Text = "Question STOPPED";
-                    lblQuestionStatus.ForeColor = Color.Red;
-                    lblTimer.Text = "Time: --";
+                    stopClient.Timeout = TimeSpan.FromSeconds(10);
+                    stopClient.DefaultRequestHeaders.Add("X-Teacher-API-Key", "dev-teacher-key");
 
-                    AddLog("Question stopped. Ready for next question.");
+                    string baseUrl = await NgrokHelper.GetNgrokBaseUrlAsync();
+
+                    string url = $"{_ngrokBaseUrl} /api/sessions/{_classId}/stop-question";
+                    AddLog($"🛑 STOP CALL: URL = {url}"); // 🚨 DEBUG URL
+
+                    var response = await stopClient.PostAsync(url,
+                     new StringContent("{}", Encoding.UTF8, "application/json"));
+
+                    AddLog($"🛑 STOP RESPONSE: {(int)response.StatusCode} {response.StatusCode}");
+                   /* var response = await stopClient.PostAsync(
+                        $"http://localhost:5000/api/sessions/{_classId}/stop-question",
+                        new StringContent("{}", Encoding.UTF8, "application/json"));*/
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        // 🚨 FORCE UI UPDATE - USE INVOKE IF NEEDED
+                        if (btnActivateQuestion.InvokeRequired)
+                        {
+                            btnActivateQuestion.Invoke(new Action(() => {
+                                btnActivateQuestion.Enabled = true;
+                                //AddLog("Activate button re-enabled (via Invoke)");
+                            }));
+                        }
+                        else
+                        {
+                            btnActivateQuestion.Enabled = true;
+                            //AddLog("Activate button re-enabled (direct)");
+                        }
+
+                        if (btnStopQuestion != null)
+                        {
+                            if (btnStopQuestion.InvokeRequired)
+                            {
+                                btnStopQuestion.Invoke(new Action(() => {
+                                    btnStopQuestion.Enabled = false;
+                                    //AddLog("Stop button disabled (via Invoke)");
+                                }));
+                            }
+                            else
+                            {
+                                btnStopQuestion.Enabled = false;
+                                //AddLog("Stop button disabled (direct)");
+                            }
+                        }
+                        if (cmbQuestions != null)
+                        {
+                            if (cmbQuestions.InvokeRequired)
+                            {
+                                cmbQuestions.Invoke(new Action(() => {
+                                    cmbQuestions.Enabled = true;
+                                    //AddLog("Dropdown re-enabled (via Invoke)");
+                                }));
+                            }
+                            else
+                            {
+                                cmbQuestions.Enabled = true;
+                                //AddLog("Dropdown re-enabled (direct)");
+                            }
+                        }
+
+                        // Update status label
+                        if (lblQuestionStatus.InvokeRequired)
+                        {
+                            lblQuestionStatus.Invoke(new Action(() => {
+                                lblQuestionStatus.Text = $"READY: Select next question";
+                                lblQuestionStatus.ForeColor = Color.Blue;
+                            }));
+                        }
+                        else
+                        {
+                            lblQuestionStatus.Text = $"READY: Select next question";
+                            lblQuestionStatus.ForeColor = Color.Blue;
+                        }
+                        lblTimer.Text = "Time: --";
+
+                        AddLog($"✅ Question stopped. UI reset complete.");
+                        //AddLog($"After stop - ActivateBtn Enabled: {btnActivateQuestion.Enabled}");
+
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        AddLog($"❌ Stop API failed: {errorContent}");
+                    }
                 }
             }
             catch (Exception ex)
             {
-                AddLog($"Error stopping question: {ex.Message}");
-            }
+                AddLog($"❌ Error stopping question: {ex.Message}");
+                AddLog($"❌ Stack trace: {ex.StackTrace}");
+                // 🚨 EMERGENCY UI RESET EVEN IF API FAILS
+                try
+                {
+                    btnActivateQuestion.Enabled = true;
+                    if (btnStopQuestion != null) btnStopQuestion.Enabled = false;
+                    if (cmbQuestions != null) cmbQuestions.Enabled = true;
+                    lblQuestionStatus.Text = "ERROR: But UI reset";
+                    AddLog("Emergency UI reset completed");
+                }
+                catch (Exception uiEx)
+                {
+                    AddLog($"Emergency UI reset failed: {uiEx.Message}");
+                }
+            }            
         }
 
         private void StopQuestionTimer()
@@ -809,6 +944,12 @@ namespace PowerPointAddIn1.Forms
             _questionTimer?.Stop();
             _questionTimer?.Dispose();
             _questionTimer = null;
+        }
+
+        // Add this method to debug class ID changes:
+        private void DebugClassId(string context)
+        {
+            AddLog($"[CLASSID DEBUG] {context} - _classId: {_classId}, _originalClassId: {_originalClassId}");
         }
 
 

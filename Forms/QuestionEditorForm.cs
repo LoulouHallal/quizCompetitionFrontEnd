@@ -15,7 +15,7 @@ namespace PowerPointAddIn1.Forms
 {
     public partial class QuestionEditorForm : Form
     {
-
+        private string _ngrokBaseUrl;
         private int _courseId;
         private int _slideNumber;
         private HttpClient _client;
@@ -58,7 +58,7 @@ namespace PowerPointAddIn1.Forms
 
             CreateQuestionUI();
             InitializeDefaultAnswers();
-
+            _ = InitializeAsync();
             // 🚨 AUTO-CREATE NEW SLIDE WHEN FORM OPENS
             //AutoCreateNewSlide();
         }
@@ -195,12 +195,20 @@ namespace PowerPointAddIn1.Forms
         private void InitializeDefaultAnswers()
         {
             // Add some default answer options
-            _answers.Add(new AnswerOption { Content = "Option A", IsCorrect = false });
+           /* _answers.Add(new AnswerOption { Content = "Option A", IsCorrect = false });
             _answers.Add(new AnswerOption { Content = "Option B", IsCorrect = false });
             _answers.Add(new AnswerOption { Content = "Option C", IsCorrect = false });
             _answers.Add(new AnswerOption { Content = "Option D", IsCorrect = false });
-
+*/
             UpdateAnswersList();
+        }
+        private async Task InitializeAsync()
+        {
+            _ngrokBaseUrl = await Helpers.NgrokHelper.GetNgrokBaseUrlAsync();
+            if (string.IsNullOrEmpty(_ngrokBaseUrl))
+            {
+                MessageBox.Show("❌ Failed to retrieve ngrok URL.");
+            }
         }
         private void UpdateAnswersList()
         {
@@ -365,8 +373,8 @@ namespace PowerPointAddIn1.Forms
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                     client.DefaultRequestHeaders.Add("Authorization", $"Bearer dev-teacher-key");
-                    var response = await client.PostAsync("http://localhost:5000/api/questions", content);
-
+                    //response = await client.PostAsync("http://192.168.0.102:5000/api/questions", content);
+                    var response = await client.PostAsync($"{_ngrokBaseUrl}/api/questions", content);
                     if (response.IsSuccessStatusCode)
                     {
                         // Get the question ID from response
@@ -410,7 +418,8 @@ namespace PowerPointAddIn1.Forms
                 var json = JsonSerializer.Serialize(mappingData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _client.PostAsync("http://localhost:5000/api/question_slides", content);
+                //var response = await _client.PostAsync("http://192.168.0.102:5000/api/question_slides", content);
+                var response = await _client.PostAsync($"{_ngrokBaseUrl}/api/question_slides", content);
                 return response.IsSuccessStatusCode;
             }
             catch (Exception ex)

@@ -13,6 +13,7 @@ namespace PowerPointAddIn1.Forms
 {
     public partial class StudentQuestionForm : Form
     {
+        private string _ngrokBaseUrl;
         private int _sessionId;
         private int _studentId;
         private string _studentName;
@@ -38,7 +39,8 @@ namespace PowerPointAddIn1.Forms
             _client = new HttpClient();
 
             InitializeStudentUI();
-            SetupWebSocketListener();
+            //SetupWebSocketListener();
+            _ = InitializeAsync();
         }
 
         private void InitializeStudentUI()
@@ -78,6 +80,17 @@ namespace PowerPointAddIn1.Forms
             questionTimer.Tick += QuestionTimer_Tick;
         }
 
+        private async Task InitializeAsync()
+        {
+            _ngrokBaseUrl = await Helpers.NgrokHelper.GetNgrokBaseUrlAsync();
+            if (string.IsNullOrEmpty(_ngrokBaseUrl))
+            {
+                MessageBox.Show("❌ Failed to retrieve ngrok URL.");
+                return;
+            }
+
+            SetupWebSocketListener();
+        }
         public void DisplayQuestion(string questionText, string[] options, int timeLimit)
         {
             Invoke(new Action(() =>
@@ -116,15 +129,128 @@ namespace PowerPointAddIn1.Forms
         private void QuestionTimer_Tick(object sender, EventArgs e)
         {
             timeRemaining--;
-            lblTimer.Text = $"{timeRemaining}s";
+            //lblTimer.Text = $"{timeRemaining}s";
 
+            if (timeRemaining <= 10)
+            {
+                lblTimer.ForeColor = Color.Red;
+                lblTimer.Font = new Font(lblTimer.Font, FontStyle.Bold);
+            }
+            else if (timeRemaining <= 30)
+            {
+                lblTimer.ForeColor = Color.Orange;
+            }
+
+            lblTimer.Text = $"{timeRemaining}s";
             if (timeRemaining <= 0)
             {
                 questionTimer.Stop();
                 btnSubmit.Enabled = false;
-                MessageBox.Show("Time's up!");
-                // Auto-submit or disable answering
+
+                // 🚨 DISPLAY "TIME OVER" instead of MessageBox
+                DisplayTimeOver();
+
+                // Optional: Auto-submit if answer was selected
+                AutoSubmitIfAnswered();
             }
+
+        }
+        private void DisplayTimeOver()
+        {
+            Invoke(new Action(() =>
+            {
+                // Change question text to show "TIME OVER"
+                lblQuestion.Text = "⏰ TIME OVER!";
+                lblQuestion.ForeColor = Color.Red;
+                lblQuestion.Font = new Font(lblQuestion.Font, FontStyle.Bold);
+
+                // Disable all option buttons
+                if (optionButtons != null)
+                {
+                    foreach (var radio in optionButtons)
+                    {
+                        radio.Enabled = false;
+                    }
+                }
+
+                // Show "Time Over" in timer label
+                lblTimer.Text = "TIME OVER";
+                lblTimer.ForeColor = Color.Red;
+
+                // Optional: Change submit button text
+                btnSubmit.Text = "Time Expired";
+                btnSubmit.BackColor = Color.LightGray;
+            }));
+        }
+
+        private async void AutoSubmitIfAnswered()
+        {
+            string selectedAnswer = GetSelectedAnswer();
+            if (!string.IsNullOrEmpty(selectedAnswer))
+            {
+                // Auto-submit the selected answer
+                await SubmitAnswer(selectedAnswer);
+            }
+            else
+            {
+                // No answer selected - just show time over
+                // You could also submit a "no answer" response
+                await SubmitNoAnswer();
+            }
+        }
+        private async Task SubmitNoAnswer()
+        {
+            try
+            {
+                var answerData = new
+                {
+                    user_id = _studentId,
+                    class_id = _sessionId,
+                    question_id = _currentQuestionId,
+                    answer_content = "NO_ANSWER", // or null
+                    time_over = true
+                };
+
+                var json = JsonSerializer.Serialize(answerData);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _client.PostAsync("http://192.168.0.102:5000/api/answers/submit", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    // Optionally show a brief message
+                    ShowBriefMessage("Time expired - no answer submitted");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error submitting time-over: {ex.Message}");
+            }
+        }
+
+        private void ShowBriefMessage(string message)
+        {
+            Invoke(new Action(() =>
+            {
+                var tempLabel = new Label();
+                tempLabel.Text = message;
+                tempLabel.Location = new Point(150, 350);
+                tempLabel.Size = new Size(300, 30);
+                tempLabel.ForeColor = Color.Red;
+                tempLabel.TextAlign = ContentAlignment.MiddleCenter;
+                this.Controls.Add(tempLabel);
+
+                // Remove after 3 seconds
+                var removeTimer = new Timer();
+                removeTimer.Interval = 3000;
+                removeTimer.Tick += (s, e) =>
+                {
+                    this.Controls.Remove(tempLabel);
+                    removeTimer.Stop();
+                    removeTimer.Dispose();
+                };
+                removeTimer.Start();
+            }));
         }
 
         private async void BtnSubmit_Click(object sender, EventArgs e)
@@ -177,14 +303,15 @@ namespace PowerPointAddIn1.Forms
                     user_id = _studentId,
                     class_id = _sessionId,
                     question_id = _currentQuestionId, // 🚨 Use the actual question ID
-                    //question_id = GetCurrentQuestionId(), // You'll need to track this
                     answer_content = answer
                 };
 
                 var json = JsonSerializer.Serialize(answerData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _client.PostAsync("http://localhost:5000/api/answers/submit", content);
+                //var response = await _client.PostAsync("http://localhost:5000/api/answers/submit", content);
+                var response = await _client.PostAsync("http://192.168.0.102:5000/api/answers/submit", content);
+
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -224,9 +351,7 @@ namespace PowerPointAddIn1.Forms
 
         private int GetCurrentQuestionId()
         {
-            // You'll need to track the current question ID
             // This should come from the WebSocket when question is activated
-            //return 1; // Temporary
             return _currentQuestionId;
 
         }
@@ -237,7 +362,11 @@ namespace PowerPointAddIn1.Forms
 
             try
             {
-                _webSocket = new WebSocket("ws://localhost:5000/socket.io/?EIO=4&transport=websocket");
+                //_webSocket = new WebSocket("ws://localhost:5000/socket.io/?EIO=4&transport=websocket");
+                //_webSocket = new WebSocket("ws://192.168.0.102:5000/socket.io/?EIO=4&transport=websocket");
+
+                string wsBaseUrl = _ngrokBaseUrl.Replace("https://", "wss://");
+                _webSocket = new WebSocket($"{wsBaseUrl}/socket.io/?EIO=4&transport=websocket");
 
                 _webSocket.OnMessage += (sender, e) =>
                 {

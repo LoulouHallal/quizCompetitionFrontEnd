@@ -308,8 +308,6 @@ namespace PowerPointAddIn1.Forms
             if (result == DialogResult.OK)
             {
                 LoadQuestions(); // Refresh question list
-                MessageBox.Show("Question added successfully!", "Success");
-
                 // 🚨 ADD THIS: Debug to confirm
                 DebugCurrentQuiz();
             }
@@ -453,7 +451,7 @@ namespace PowerPointAddIn1.Forms
                     client.Timeout = TimeSpan.FromSeconds(30);
 
                     // 🚨 SHOW DEBUG INFO IN MESSAGEBOX TOO
-                    MessageBox.Show($"Sending request to: http://localhost:5000/api/courses\nData: {json}", "DEBUG - Request");
+                    //MessageBox.Show($"Sending request to: http://localhost:5000/api/courses\nData: {json}", "DEBUG - Request");
 
                     // 🚨 ADD DEBUG INFO
                     Console.WriteLine($"Sending course creation request: {json}");
@@ -461,14 +459,14 @@ namespace PowerPointAddIn1.Forms
                     var response = await client.PostAsync("http://localhost:5000/api/courses", content);
 
                     // 🚨 ADD RESPONSE DEBUGGING
-                    Console.WriteLine($"Response Status: {response.StatusCode}");
+                    //Console.WriteLine($"Response Status: {response.StatusCode}");
 
 
 
                     var responseContent = await response.Content.ReadAsStringAsync();
                     Console.WriteLine($"Response Content: {responseContent}");
 
-                    MessageBox.Show($"Response Status: {(int)response.StatusCode} {response.StatusCode}\nResponse: {responseContent}", "DEBUG - Response");
+                    //MessageBox.Show($"Response Status: {(int)response.StatusCode} {response.StatusCode}\nResponse: {responseContent}", "DEBUG - Response");
 
                     if (response.IsSuccessStatusCode)
                     {
@@ -519,7 +517,6 @@ namespace PowerPointAddIn1.Forms
                     var content = await response.Content.ReadAsStringAsync();
                     var questions = JsonSerializer.Deserialize<List<Question>>(content);
 
-                    MessageBox.Show($"Course {_courseId} has {questions?.Count ?? 0} questions", "Debug");
                 }
             }
             catch (Exception ex)
@@ -535,10 +532,6 @@ namespace PowerPointAddIn1.Forms
         [JsonPropertyName("course_name")]
         public string CourseName { get; set; }
     
-       /* //private void AuthorTabForm_Load(object sender, EventArgs e)
-        //{
-
-        //}*/
     }
     public class Question
     {

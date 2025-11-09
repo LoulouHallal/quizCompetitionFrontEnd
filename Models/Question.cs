@@ -9,7 +9,7 @@ namespace PowerPointAddIn1.Models
     public class Question
     {
         public long QuestionId { get; set; }
-        public string Content { get; set; }
+        public string Content { get; set; } = string.Empty;
         public int Points { get; set; }
         public int TimeLimitSeconds { get; set; }
         public List<Answer> Answers { get; set; } = new List<Answer>();

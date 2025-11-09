@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using PowerPointAddIn1.Helpers;
 
 namespace PowerPointAddIn1.Forms
 {
@@ -124,6 +125,7 @@ namespace PowerPointAddIn1.Forms
 
         private async Task<(bool, int)> AuthenticateTeacher(string email, string password)
         {
+            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
             using (var client = new HttpClient())
             {
                 try
@@ -138,14 +140,29 @@ namespace PowerPointAddIn1.Forms
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                     // Add API key for teacher authentication endpoint
-                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer dev-teacher-key");
+                    client.DefaultRequestHeaders.Add("X-Teacher-API-Key", "dev-teacher-key");
                     client.Timeout = TimeSpan.FromSeconds(10);
-                    
-                    var response = await client.PostAsync("http://localhost:5000/api/teachers/login", content);
 
+                    string baseUrl = await NgrokHelper.GetNgrokBaseUrlAsync();
+
+                    if (string.IsNullOrWhiteSpace(baseUrl))
+                    {
+                        MessageBox.Show("❌ ngrok URL is missing or invalid. Cannot authenticate.", "Login Error");
+                        return (false, 0);
+                    }
+
+                    string loginUrl = $"{baseUrl}/api/teachers/login";
+
+                    // 🔍 Optional debug log
+                    Console.WriteLine($"🔗 Login URL: {loginUrl}");
+
+                    Console.WriteLine("🔗 Sending POST to: " + loginUrl);
+                    Console.WriteLine("📦 Payload: " + json);
+                    MessageBox.Show($"🔗 Login URL: {loginUrl}", "Debug");
+                    var response = await client.PostAsync(loginUrl, content);
                     var responseContent = await response.Content.ReadAsStringAsync();
-                   // MessageBox.Show($"Response Content: {responseContent}", "Debug - Content");
-
+                    Console.WriteLine("📥 Response status: " + response.StatusCode);
+                    Console.WriteLine("📥 Response body: " + responseContent);
 
                     if (response.IsSuccessStatusCode)
                     {

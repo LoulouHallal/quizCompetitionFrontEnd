@@ -14,6 +14,7 @@ namespace PowerPointAddIn1.Forms
 {
     public partial class QuestionResultsForm : Form
     {
+        private string _ngrokBaseUrl;
         private int _questionId;
         private int _classId;
         private HttpClient _client;
@@ -30,7 +31,8 @@ namespace PowerPointAddIn1.Forms
             _client.DefaultRequestHeaders.Add("Authorization", "Bearer dev-teacher-key");
 
             InitializeResultsUI();
-            LoadQuestionResults();
+            //LoadQuestionResults();
+            _ = InitializeAsync();
         }
 
         private void InitializeResultsUI()
@@ -61,13 +63,24 @@ namespace PowerPointAddIn1.Forms
             btnClose.Click += (s, e) => this.Close();
             this.Controls.Add(btnClose);
         }
+        private async Task InitializeAsync()
+        {
+            _ngrokBaseUrl = await Helpers.NgrokHelper.GetNgrokBaseUrlAsync();
+            if (string.IsNullOrEmpty(_ngrokBaseUrl))
+            {
+                webBrowser.DocumentText = "<h3>❌ Failed to retrieve ngrok URL.</h3>";
+                return;
+            }
 
-        private async void LoadQuestionResults()
+            await LoadQuestionResults();
+        }
+
+        private async Task LoadQuestionResults()
         {
             try
             {
-                var response = await _client.GetAsync($"http://localhost:5000/api/questions/{_questionId}/results");
-                if (response.IsSuccessStatusCode)
+                //var response = await _client.GetAsync($"http://192.168.0.102:5000/api/questions/{_questionId}/results");
+                var response = await _client.GetAsync($"{_ngrokBaseUrl}/api/questions/{_questionId}/results"); if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
                     var results = JsonSerializer.Deserialize<JsonElement>(content);

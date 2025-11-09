@@ -258,6 +258,12 @@
     <Compile Include="Forms\AuthorTabForm.Designer.cs">
       <DependentUpon>AuthorTabForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\LiveLeaderboardForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\LiveLeaderboardForm.Designer.cs">
+      <DependentUpon>LiveLeaderboardForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\MainRibbon.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -298,6 +304,7 @@
     <Compile Include="Forms\TeacherLoginForm.Designer.cs">
       <DependentUpon>TeacherLoginForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Helpers\NgrokHelper.cs" />
     <Compile Include="Models\ClassSession.cs" />
     <Compile Include="Models\Question.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
@@ -305,6 +312,9 @@
     </Compile>
     <EmbeddedResource Include="Forms\AuthorTabForm.resx">
       <DependentUpon>AuthorTabForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Forms\LiveLeaderboardForm.resx">
+      <DependentUpon>LiveLeaderboardForm.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Forms\MainRibbon.resx">
       <DependentUpon>MainRibbon.cs</DependentUpon>
@@ -383,6 +393,9 @@
       <Isolated>False</Isolated>
       <EmbedInteropTypes>True</EmbedInteropTypes>
     </COMReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include=".Designer.gitignore" />
   </ItemGroup>
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
